@@ -3,7 +3,7 @@
   'South Central US'
   'East US'
 ])
-param location string = 'South Central US'
+param location string = 'East US'
 
 @description('''
 Unique name for the chat application.  The name is required to be unique as it will be used as a prefix for the names of these resources:
@@ -85,7 +85,6 @@ resource cosmosDbAccount 'Microsoft.DocumentDB/databaseAccounts@2022-08-15' = {
       defaultConsistencyLevel: 'Session'
     }
     databaseAccountOfferType: 'Standard'
-    enableFreeTier: cosmosDbSettings.enableFreeTier
     locations: [
       {
         failoverPriority: 0
