@@ -24,11 +24,10 @@ public class CosmosDbService
     /// </remarks>
     public CosmosDbService(string endpoint, string key, string databaseName, string containerName)
     {
-        ArgumentNullException.ThrowIfNullOrEmpty(endpoint);
-        ArgumentNullException.ThrowIfNullOrEmpty(key);
         ArgumentNullException.ThrowIfNullOrEmpty(databaseName);
         ArgumentNullException.ThrowIfNullOrEmpty(containerName);
-
+        ArgumentNullException.ThrowIfNullOrEmpty(endpoint);
+        ArgumentNullException.ThrowIfNullOrEmpty(key);
 
         CosmosSerializationOptions options = new()
         {
@@ -44,6 +43,35 @@ public class CosmosDbService
 
         _container = container ??
             throw new ArgumentException("Unable to connect to existing Azure Cosmos DB container or database.");
+    }
+
+    /// <summary>
+    /// Creates a new chat session.
+    /// </summary>
+    /// <param name="session">Chat session item to create.</param>
+    /// <returns>Newly created chat session item.</returns>
+    public async Task<Session> InsertSessionAsync(Session session)
+    {
+        PartitionKey partitionKey = new(session.SessionId);
+        return await _container.CreateItemAsync<Session>(
+            item: session,
+            partitionKey: partitionKey
+        );
+    }
+
+    /// <summary>
+    /// Creates a new chat message.
+    /// </summary>
+    /// <param name="message">Chat message item to create.</param>
+    /// <returns>Newly created chat message item.</returns>
+    public async Task<Message> InsertMessageAsync(Message message)
+    {
+        PartitionKey partitionKey = new(message.SessionId);
+        Message newMessage = message with { TimeStamp = DateTime.UtcNow };
+        return await _container.CreateItemAsync<Message>(
+            item: message,
+            partitionKey: partitionKey
+        );
     }
 
     /// <summary>
@@ -86,34 +114,6 @@ public class CosmosDbService
             output.AddRange(response);
         }
         return output;
-    }
-
-    /// <summary>
-    /// Creates a new chat session.
-    /// </summary>
-    /// <param name="session">Chat session item to create.</param>
-    /// <returns>Newly created chat session item.</returns>
-    public async Task<Session> InsertSessionAsync(Session session)
-    {
-        PartitionKey partitionKey = new(session.SessionId);
-        return await _container.CreateItemAsync<Session>(
-            item: session,
-            partitionKey: partitionKey
-        );
-    }
-
-    /// <summary>
-    /// Creates a new chat message.
-    /// </summary>
-    /// <param name="message">Chat message item to create.</param>
-    /// <returns>Newly created chat message item.</returns>
-    public async Task<Message> InsertMessageAsync(Message message)
-    {
-        PartitionKey partitionKey = new(message.SessionId);
-        return await _container.CreateItemAsync<Message>(
-            item: message,
-            partitionKey: partitionKey
-        );
     }
 
     /// <summary>
@@ -161,21 +161,19 @@ public class CosmosDbService
     {
         PartitionKey partitionKey = new(sessionId);
 
-        // TODO: await container.DeleteAllItemsByPartitionKeyStreamAsync(partitionKey);
-
-        QueryDefinition query = new QueryDefinition("SELECT c.id FROM c WHERE c.sessionId = @sessionId")
+        QueryDefinition query = new QueryDefinition("SELECT VALUE c.id FROM c WHERE c.sessionId = @sessionId")
                 .WithParameter("@sessionId", sessionId);
 
-        FeedIterator<Message> response = _container.GetItemQueryIterator<Message>(query);
+        FeedIterator<string> response = _container.GetItemQueryIterator<string>(query);
 
         TransactionalBatch batch = _container.CreateTransactionalBatch(partitionKey);
         while (response.HasMoreResults)
         {
-            FeedResponse<Message> results = await response.ReadNextAsync();
-            foreach (var item in results)
+            FeedResponse<string> results = await response.ReadNextAsync();
+            foreach (var itemId in results)
             {
                 batch.DeleteItem(
-                    id: item.Id
+                    id: itemId
                 );
             }
         }
